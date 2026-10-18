@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><title>Round Table 起動</title><style>
+:root{--bg:#fbfbf9;--panel:#fff;--line:#e3e1db;--text:#1f1f1d;--sub:#6e6c66;--accent:#3b6fd8}
+@media (prefers-color-scheme:dark){:root{--bg:#1e1f22;--panel:#26282c;--line:#34363b;--text:#e9e9e6;--sub:#9b9a95}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Hiragino Sans','Yu Gothic UI',sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+.card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:26px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.06)}
+h1{font-size:22px;margin:4px 0 6px}.sub{color:var(--sub);font-size:14px;margin:0 0 22px}
+.go{width:100%;padding:18px;font-size:19px;font-weight:700;border:0;border-radius:14px;background:var(--accent);color:#fff;cursor:pointer}.go:disabled{opacity:.5}
+#msg{margin-top:16px;font-size:14px;color:var(--sub);min-height:20px;white-space:pre-wrap}.err{color:#c44b4b!important}
+label{display:block;text-align:left;font-size:13px;color:var(--sub);margin:14px 0 5px}input{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--bg);color:var(--text)}
+.small{background:none;border:0;color:var(--sub);font-size:13px;margin-top:18px;text-decoration:underline;cursor:pointer}.hint{font-size:12px;color:var(--sub);text-align:left;line-height:1.6;margin-top:10px}
+</style></head><body><div class="card" id="card"></div>
+<script>
+const $=id=>document.getElementById(id);const KEY='rt-launcher';
+const load=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return {}}};
+const store=v=>{try{localStorage.setItem(KEY,JSON.stringify(v));return true}catch(e){return false}};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function home(){let s=load();if(!s.token||!s.url){return setup()}
+$('card').innerHTML=`<div style="font-size:42px">🪑</div><h1>Round Table</h1><p class="sub">ボタンを押すと Codespace を起動して開きます</p><button class="go" id="go" onclick="launch()">起動して開く</button><div id="msg"></div><button class="small" onclick="setup()">設定</button>`}
+function setup(){let s=load();
+$('card').innerHTML=`<h1>初回設定</h1><p class="sub">この端末のブラウザにだけ保存されます</p>
+<label>Round Table の URL（パソコンで開いているURLをそのまま）</label><input id="url" value="${s.url||''}" placeholder="https://〇〇〇-8765.app.github.dev/">
+<label>GitHub の鍵（トークン）</label><input id="token" type="password" value="${s.token||''}" placeholder="ghp_...">
+<p class="hint">鍵は他人に見せないでください。この端末を人に貸す場合は、ここを空にして保存してください。</p>
+<button class="go" style="margin-top:14px" onclick="save()">保存</button><div id="msg"></div>`}
+function save(){let url=$('url').value.trim(),token=$('token').value.trim();
+if(url&&!/^https:\/\/[^/]+-8765\.app\.github\.dev/.test(url))return show('URLの形が違います（…-8765.app.github.dev で終わるもの）',1);
+if(!store({url,token}))return show('このブラウザでは保存できません（プライベートモードを解除してください）',1);home()}
+function show(t,err){let m=$('msg');if(m){m.textContent=t;m.className=err?'err':''}}
+function csName(url){return new URL(url).host.replace(/-8765\.app\.github\.dev$/,'')}
+async function gh(method,path,token){let r=await fetch('https://api.github.com'+path,{method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}});
+let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw Error((r.status===401?'鍵が無効か期限切れです。設定から入れ直してください。':r.status===404?'Codespace が見つかりません（URLか鍵の権限を確認）。':'GitHub エラー '+r.status)+(d.message?'\n'+d.message:''));return d}
+async function launch(){let s=load(),b=$('go');b.disabled=true;
+try{let name=csName(s.url);show('状態を確認中…');let c=await gh('GET','/user/codespaces/'+name,s.token);
+if(c.state!=='Available'){show('Codespace を起動中…（1〜2分）');if(!/Starting|Queued|Provisioning|Awaiting|Rebuilding/.test(c.state))await gh('POST','/user/codespaces/'+name+'/start',s.token);
+let t0=Date.now();while(true){await sleep(4000);c=await gh('GET','/user/codespaces/'+name,s.token);show(`Codespace を起動中…（${c.state}・${Math.round((Date.now()-t0)/1000)}秒）`);if(c.state==='Available')break;if(Date.now()-t0>300000)throw Error('5分たっても起動しませんでした。github.com/codespaces で確認してください。')}
+for(let i=20;i>0;i--){show(`Round Table の起動を待っています…（${i}秒）`);await sleep(1000)}}
+show('開きます…');location.href=s.url}catch(e){show(e.message,1);b.disabled=false}}
+home();
+</script></body></html>
